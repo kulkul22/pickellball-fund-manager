@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +26,13 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   ArrowLeftRight,
   Plus,
   Receipt,
@@ -34,12 +42,16 @@ import {
   ShieldCheck,
   Loader2,
   Dumbbell,
+  LogOut,
+  UserCog,
 } from 'lucide-react';
+import { useAuthStore, type AuthUser } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
 
 /* ─── Types ─── */
 interface User {
   id: string;
+  username: string;
   name: string;
   role: string;
   balance: number;
@@ -58,12 +70,12 @@ interface Settlement {
 
 /* ─── Component ─── */
 export default function Dashboard() {
+  const router = useRouter();
   const { toast } = useToast();
+  const { user: authUser, logout, updateBalance } = useAuthStore();
 
   // Data states
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -78,45 +90,50 @@ export default function Dashboard() {
   const [formPayerId, setFormPayerId] = useState('');
   const [formParticipants, setFormParticipants] = useState<string[]>([]);
 
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!authUser) {
+      router.replace('/login');
+    }
+  }, [authUser, router]);
+
   // Fetch users
   const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch('/api/users');
       const data = await res.json();
       setUsers(data);
-      if (data.length > 0 && !selectedUserId) {
-        const admin = data.find((u: User) => u.role === 'ADMIN');
-        const defaultUser = admin || data[0];
-        setSelectedUserId(defaultUser.id);
-      }
+      // Update balance in auth store
+      const me = data.find((u: User) => u.id === authUser?.id);
+      if (me) updateBalance(me.balance);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được danh sách user', variant: 'destructive' });
     }
-  }, [selectedUserId, toast]);
+  }, [authUser?.id, toast, updateBalance]);
 
-  // Fetch settlements for selected user
-  const fetchSettlements = useCallback(async (userId: string) => {
-    if (!userId) return;
+  // Fetch settlements for current user
+  const fetchSettlements = useCallback(async () => {
+    if (!authUser) return;
     try {
-      const res = await fetch(`/api/settlements?userId=${userId}`);
+      const res = await fetch(`/api/settlements?userId=${authUser.id}`);
       const data = await res.json();
       setSettlements(data);
     } catch {
       setSettlements([]);
     }
-  }, []);
+  }, [authUser]);
 
   // Initialize
   useEffect(() => {
-    fetchUsers().then(() => setLoading(false));
-  }, [fetchUsers]);
+    if (authUser) {
+      Promise.all([fetchUsers(), fetchSettlements()]).then(() => setLoading(false));
+    }
+  }, [authUser, fetchUsers, fetchSettlements]);
 
-  // When selected user changes
-  useEffect(() => {
-    const user = users.find((u) => u.id === selectedUserId);
-    setCurrentUser(user || null);
-    fetchSettlements(selectedUserId);
-  }, [selectedUserId, users, fetchSettlements]);
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
 
   // Toggle participant in form
   const toggleParticipant = (userId: string) => {
@@ -153,15 +170,13 @@ export default function Dashboard() {
 
       toast({ title: 'Thành công', description: 'Đã tạo buổi đánh mới' });
       setModalOpen(false);
-      // Reset form
       setFormDate('');
       setFormLocation('');
       setFormCost('');
       setFormPayerId('');
       setFormParticipants([]);
-      // Refresh
       await fetchUsers();
-      await fetchSettlements(selectedUserId);
+      await fetchSettlements();
     } catch (e: unknown) {
       toast({
         title: 'Lỗi',
@@ -173,7 +188,7 @@ export default function Dashboard() {
     }
   };
 
-  // Settlement action (SEND / RECEIVE / ADMIN_FORCE)
+  // Settlement action
   const handleSettlementAction = async (settlementId: string, action: string, userRole: string) => {
     setActionLoading(settlementId);
     try {
@@ -189,7 +204,7 @@ export default function Dashboard() {
       }
 
       toast({ title: 'Thành công', description: 'Đã cập nhật trạng thái' });
-      await fetchSettlements(selectedUserId);
+      await fetchSettlements();
     } catch (e: unknown) {
       toast({
         title: 'Lỗi',
@@ -201,21 +216,17 @@ export default function Dashboard() {
     }
   };
 
-  // Tổng kết (debt simplification)
+  // Tổng kết
   const handleSettle = async () => {
     setSettling(true);
     try {
       const res = await fetch('/api/settlements', { method: 'POST' });
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || 'Lỗi tổng kết');
 
-      toast({
-        title: 'Tổng kết thành công',
-        description: data.message || 'Đã tạo settlements',
-      });
+      toast({ title: 'Tổng kết thành công', description: data.message || 'Đã tạo settlements' });
       await fetchUsers();
-      await fetchSettlements(selectedUserId);
+      await fetchSettlements();
     } catch (e: unknown) {
       toast({
         title: 'Lỗi',
@@ -227,10 +238,10 @@ export default function Dashboard() {
     }
   };
 
-  const balanceColor = currentUser
-    ? currentUser.balance > 0
+  const balanceColor = authUser
+    ? authUser.balance > 0
       ? 'text-emerald-600'
-      : currentUser.balance < 0
+      : authUser.balance < 0
         ? 'text-red-500'
         : 'text-muted-foreground'
     : 'text-muted-foreground';
@@ -248,7 +259,7 @@ export default function Dashboard() {
     return <Badge variant={s.variant}>{s.label}</Badge>;
   };
 
-  if (loading) {
+  if (!authUser || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -267,41 +278,56 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">Quản lý quỹ Pickleball</h1>
-              <p className="text-xs text-muted-foreground">Theo dõi chi phí & thanh toán</p>
+              <p className="text-xs text-muted-foreground">Xin chào, {authUser.name}</p>
             </div>
           </div>
-          <Link href="/history">
-            <Button variant="ghost" size="sm" className="gap-2">
-              <History className="h-4 w-4" />
-              Lịch sử
-            </Button>
-          </Link>
+
+          <div className="flex items-center gap-2">
+            {/* Admin link */}
+            {authUser.role === 'ADMIN' && (
+              <Link href="/admin">
+                <Button variant="ghost" size="sm" className="gap-2 text-amber-700">
+                  <UserCog className="h-4 w-4" />
+                  <span className="hidden sm:inline">Quản lý user</span>
+                </Button>
+              </Link>
+            )}
+
+            <Link href="/history">
+              <Button variant="ghost" size="sm" className="gap-2">
+                <History className="h-4 w-4" />
+                <span className="hidden sm:inline">Lịch sử</span>
+              </Button>
+            </Link>
+
+            {/* User menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <div className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
+                    {authUser.name.charAt(0)}
+                  </div>
+                  <span className="hidden sm:inline max-w-[100px] truncate">{authUser.name}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <div className="px-2 py-1.5">
+                  <p className="text-sm font-medium">{authUser.name}</p>
+                  <p className="text-xs text-muted-foreground">@{authUser.username}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Đăng xuất
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
       {/* Main */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 space-y-6">
-        {/* User Selector */}
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <Label className="text-sm font-medium shrink-0">Đang đăng nhập với tư cách:</Label>
-              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                <SelectTrigger className="sm:w-[220px]">
-                  <SelectValue placeholder="Chọn user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name} {u.role === 'ADMIN' && '(Admin)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Balance */}
         <Card className="shadow-sm">
           <CardHeader className="pb-3">
@@ -313,15 +339,15 @@ export default function Dashboard() {
           <CardContent className="pt-0">
             <div className="flex items-baseline gap-2">
               <span className={`text-3xl font-bold tabular-nums ${balanceColor}`}>
-                {currentUser ? (currentUser.balance >= 0 ? '+' : '') + formatMoney(currentUser.balance) : '0 ₫'}
+                {authUser.balance >= 0 ? '+' : ''}{formatMoney(authUser.balance)}
               </span>
-              {currentUser?.balance === 0 && (
+              {authUser.balance === 0 && (
                 <span className="text-sm text-muted-foreground">Đã cân bằng</span>
               )}
-              {currentUser && currentUser.balance > 0 && (
+              {authUser.balance > 0 && (
                 <span className="text-sm text-emerald-600">Bạn được nợ tiền</span>
               )}
-              {currentUser && currentUser.balance < 0 && (
+              {authUser.balance < 0 && (
                 <span className="text-sm text-red-500">Bạn đang nợ</span>
               )}
             </div>
@@ -329,7 +355,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Admin Actions */}
-        {currentUser?.role === 'ADMIN' && (
+        {authUser.role === 'ADMIN' && (
           <div className="flex flex-col sm:flex-row gap-3">
             <Dialog open={modalOpen} onOpenChange={setModalOpen}>
               <DialogTrigger asChild>
@@ -471,14 +497,13 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* fromUser + PENDING: nút "Tôi đã chuyển" */}
-                      {currentUser?.id === s.fromUserId && s.status === 'PENDING' && (
+                      {authUser.id === s.fromUserId && s.status === 'PENDING' && (
                         <Button
                           size="sm"
                           variant="outline"
                           className="gap-1 text-xs"
                           disabled={actionLoading === s.id}
-                          onClick={() => handleSettlementAction(s.id, 'SEND', currentUser.role)}
+                          onClick={() => handleSettlementAction(s.id, 'SEND', authUser.role)}
                         >
                           {actionLoading === s.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -489,13 +514,12 @@ export default function Dashboard() {
                         </Button>
                       )}
 
-                      {/* toUser + SENT: nút "Xác nhận đã nhận" */}
-                      {currentUser?.id === s.toUserId && s.status === 'SENT' && (
+                      {authUser.id === s.toUserId && s.status === 'SENT' && (
                         <Button
                           size="sm"
                           className="gap-1 text-xs bg-emerald-600 hover:bg-emerald-700"
                           disabled={actionLoading === s.id}
-                          onClick={() => handleSettlementAction(s.id, 'RECEIVE', currentUser.role)}
+                          onClick={() => handleSettlementAction(s.id, 'RECEIVE', authUser.role)}
                         >
                           {actionLoading === s.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -506,8 +530,7 @@ export default function Dashboard() {
                         </Button>
                       )}
 
-                      {/* ADMIN: nút "Admin duyệt hộ" */}
-                      {currentUser?.role === 'ADMIN' && s.status !== 'SETTLED' && (
+                      {authUser.role === 'ADMIN' && s.status !== 'SETTLED' && (
                         <Button
                           size="sm"
                           variant="outline"

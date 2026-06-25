@@ -2,10 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useRouter } from 'next/navigation';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MapPin, Calendar, Users, Wallet, Loader2, Dumbbell } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ArrowLeft, MapPin, Calendar, Users, Wallet, Loader2, Dumbbell, LogOut, Home } from 'lucide-react';
+import { useAuthStore } from '@/lib/auth-store';
 
 interface Participant {
   user: { id: string; name: string };
@@ -21,23 +30,39 @@ interface Session {
 }
 
 export default function HistoryPage() {
+  const router = useRouter();
+  const { user: authUser, logout } = useAuthStore();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchSessions() {
-      try {
-        const res = await fetch('/api/sessions');
-        const data = await res.json();
-        setSessions(data);
-      } catch {
-        setSessions([]);
-      } finally {
-        setLoading(false);
-      }
+    if (!authUser) {
+      router.replace('/login');
     }
-    fetchSessions();
-  }, []);
+  }, [authUser, router]);
+
+  useEffect(() => {
+    if (authUser) {
+      fetchSessions();
+    }
+  }, [authUser]);
+
+  async function fetchSessions() {
+    try {
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      setSessions(data);
+    } catch {
+      setSessions([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
 
   const formatMoney = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -52,7 +77,7 @@ export default function HistoryPage() {
     });
   };
 
-  if (loading) {
+  if (!authUser || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -64,20 +89,48 @@ export default function HistoryPage() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-green-50 via-white to-amber-50">
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="shrink-0">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-emerald-600 flex items-center justify-center">
-              <Dumbbell className="h-5 w-5 text-white" />
-            </div>
+            <Link href="/">
+              <Button variant="ghost" size="icon" className="shrink-0">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            </Link>
             <div>
               <h1 className="text-lg font-bold tracking-tight">Lịch sử buổi đánh</h1>
               <p className="text-xs text-muted-foreground">Tất cả các session đã tạo</p>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="gap-2">
+                <Home className="h-4 w-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Button>
+            </Link>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <div className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
+                    {authUser.name.charAt(0)}
+                  </div>
+                  <span className="hidden sm:inline max-w-[100px] truncate">{authUser.name}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <div className="px-2 py-1.5">
+                  <p className="text-sm font-medium">{authUser.name}</p>
+                  <p className="text-xs text-muted-foreground">@{authUser.username}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Đăng xuất
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -86,12 +139,13 @@ export default function HistoryPage() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
         {sessions.length === 0 ? (
           <Card className="shadow-sm">
-            <CardContent className="py-12 text-center">
+            <div className="py-12 text-center">
+              <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
               <p className="text-muted-foreground">Chưa có buổi đánh nào được ghi nhận.</p>
               <Link href="/">
                 <Button variant="link" className="mt-2">Quay lại Dashboard</Button>
               </Link>
-            </CardContent>
+            </div>
           </Card>
         ) : (
           <div className="space-y-3">
@@ -100,14 +154,10 @@ export default function HistoryPage() {
                 key={session.id}
                 className="group rounded-xl border bg-white shadow-sm overflow-hidden transition-all hover:shadow-md"
               >
-                {/* Summary (always visible) */}
                 <summary className="cursor-pointer select-none px-4 py-4 flex items-center gap-4 list-none [&::-webkit-details-marker]:hidden">
-                  {/* Index */}
                   <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 text-sm font-bold">
                     {sessions.length - idx}
                   </div>
-
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm truncate">{session.location}</span>
@@ -126,8 +176,6 @@ export default function HistoryPage() {
                       </span>
                     </div>
                   </div>
-
-                  {/* Chevron */}
                   <svg
                     className="h-5 w-5 text-muted-foreground transition-transform group-open:rotate-180 shrink-0"
                     fill="none"
@@ -138,11 +186,8 @@ export default function HistoryPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
                 </summary>
-
-                {/* Expanded details */}
                 <div className="px-4 pb-4 pt-0 border-t bg-muted/30">
                   <div className="pt-3 space-y-3">
-                    {/* Payer */}
                     <div className="flex items-center gap-2">
                       <Wallet className="h-4 w-4 text-amber-500" />
                       <span className="text-sm">
@@ -150,16 +195,12 @@ export default function HistoryPage() {
                         <span className="text-emerald-700 font-semibold">{session.payer.name}</span>
                       </span>
                     </div>
-
-                    {/* Location */}
                     <div className="flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-red-400" />
                       <span className="text-sm">
                         <span className="font-medium">Địa điểm:</span> {session.location}
                       </span>
                     </div>
-
-                    {/* Cost breakdown */}
                     <div className="flex items-center gap-2">
                       <Wallet className="h-4 w-4 text-blue-400" />
                       <span className="text-sm">
@@ -167,8 +208,6 @@ export default function HistoryPage() {
                         {formatMoney(Math.floor(session.totalCost / session.participants.length))}
                       </span>
                     </div>
-
-                    {/* Participants list */}
                     <div className="flex items-start gap-2">
                       <Users className="h-4 w-4 text-violet-400 mt-0.5" />
                       <div className="flex-1">
