@@ -9,19 +9,19 @@ async function main() {
   await prisma.settlement.deleteMany();
   await prisma.user.deleteMany();
 
-  // Tạo 3 user với username
+  // Tạo 3 user với username + zalo nickname
   await prisma.user.createMany({
     data: [
-      { username: "admin", name: "Admin Tuấn", role: "ADMIN", balance: 0 },
-      { username: "an", name: "User An", role: "USER", balance: 0 },
-      { username: "binh", name: "User Bình", role: "USER", balance: 0 },
+      { username: "admin", name: "Admin Tuấn", zaloNickname: "TuanPickleball", role: "ADMIN", balance: 0 },
+      { username: "an", name: "User An", zaloNickname: "An deptrai", role: "USER", balance: 0 },
+      { username: "binh", name: "User Bình", zaloNickname: "Binh volley", role: "USER", balance: 0 },
     ],
   });
 
   console.log("✅ Seed data created successfully!");
-  console.log("  - admin / Admin Tuấn (ADMIN)");
-  console.log("  - an / User An (USER)");
-  console.log("  - binh / User Bình (USER)");
+  console.log("  - admin / Admin Tuấn (ADMIN) — Zalo: TuanPickleball");
+  console.log("  - an / User An (USER) — Zalo: An deptrai");
+  console.log("  - binh / User Bình (USER) — Zalo: Binh volley");
 }
 
 main()

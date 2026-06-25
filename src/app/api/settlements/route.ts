@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
       ],
     },
     include: {
-      fromUser: { select: { id: true, name: true, role: true } },
-      toUser: { select: { id: true, name: true, role: true } },
+      fromUser: { select: { id: true, name: true, zaloNickname: true, role: true } },
+      toUser: { select: { id: true, name: true, zaloNickname: true, role: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -92,8 +92,8 @@ export async function POST(req: NextRequest) {
           status: "PENDING",
         },
         include: {
-          fromUser: { select: { name: true } },
-          toUser: { select: { name: true } },
+          fromUser: { select: { name: true, zaloNickname: true } },
+          toUser: { select: { name: true, zaloNickname: true } },
         },
       });
       created.push(settlement);

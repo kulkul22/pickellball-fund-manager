@@ -20,9 +20,21 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +43,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  ArrowLeft,
   Dumbbell,
   Loader2,
   Pencil,
@@ -41,6 +52,9 @@ import {
   User as UserIcon,
   History,
   RotateCcw,
+  UserPlus,
+  Trash2,
+  MessageCircle,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
@@ -49,6 +63,7 @@ interface User {
   id: string;
   username: string;
   name: string;
+  zaloNickname: string;
   role: string;
   balance: number;
 }
@@ -60,26 +75,29 @@ export default function AdminPage() {
 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Add member dialog
+  const [addOpen, setAddOpen] = useState(false);
+  const [addUsername, setAddUsername] = useState('');
+  const [addName, setAddName] = useState('');
+  const [addZalo, setAddZalo] = useState('');
+  const [addRole, setAddRole] = useState('USER');
 
   // Edit dialog state
   const [editOpen, setEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
+  const [editZalo, setEditZalo] = useState('');
   const [editRole, setEditRole] = useState('');
   const [editBalance, setEditBalance] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  // Redirect if not admin
+  // Auth guards
   useEffect(() => {
-    if (authUser && authUser.role !== 'ADMIN') {
-      router.replace('/');
-    }
+    if (authUser && authUser.role !== 'ADMIN') router.replace('/');
   }, [authUser, router]);
-
   useEffect(() => {
-    if (!authUser) {
-      router.replace('/login');
-    }
+    if (!authUser) router.replace('/login');
   }, [authUser, router]);
 
   const fetchUsers = useCallback(async () => {
@@ -98,9 +116,58 @@ export default function AdminPage() {
     if (authUser?.role === 'ADMIN') fetchUsers();
   }, [authUser, fetchUsers]);
 
+  /* ─── Add member ─── */
+  const resetAddForm = () => {
+    setAddUsername('');
+    setAddName('');
+    setAddZalo('');
+    setAddRole('USER');
+  };
+
+  const handleAdd = async () => {
+    if (!addUsername.trim() || !addName.trim()) {
+      toast({ title: 'Lỗi', description: 'Vui lòng điền username và tên hiển thị', variant: 'destructive' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: addUsername.trim(),
+          name: addName.trim(),
+          zaloNickname: addZalo.trim(),
+          role: addRole,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Lỗi tạo user');
+      }
+
+      toast({ title: 'Thành công', description: `Đã thêm thành viên ${addName.trim()}` });
+      setAddOpen(false);
+      resetAddForm();
+      await fetchUsers();
+    } catch (e: unknown) {
+      toast({
+        title: 'Lỗi',
+        description: e instanceof Error ? e.message : 'Đã xảy ra lỗi',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ─── Edit member ─── */
   const openEdit = (user: User) => {
     setEditingUser(user);
     setEditName(user.name);
+    setEditZalo(user.zaloNickname);
     setEditRole(user.role);
     setEditBalance(String(user.balance));
     setEditOpen(true);
@@ -108,7 +175,6 @@ export default function AdminPage() {
 
   const handleSave = async () => {
     if (!editingUser) return;
-
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${editingUser.id}`, {
@@ -116,6 +182,7 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: editName.trim(),
+          zaloNickname: editZalo.trim(),
           role: editRole,
           balance: parseInt(editBalance) || 0,
         }),
@@ -126,7 +193,7 @@ export default function AdminPage() {
         throw new Error(err.error || 'Lỗi cập nhật');
       }
 
-      toast({ title: 'Thành công', description: `Đã cập nhật ${editName}` });
+      toast({ title: 'Thành công', description: `Đã cập nhật ${editName.trim()}` });
       setEditOpen(false);
       await fetchUsers();
     } catch (e: unknown) {
@@ -140,6 +207,29 @@ export default function AdminPage() {
     }
   };
 
+  /* ─── Delete member ─── */
+  const handleDelete = async (userId: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Lỗi xóa');
+      }
+      toast({ title: 'Thành công', description: 'Đã xóa thành viên' });
+      await fetchUsers();
+    } catch (e: unknown) {
+      toast({
+        title: 'Lỗi',
+        description: e instanceof Error ? e.message : 'Đã xảy ra lỗi',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ─── Reset balance ─── */
   const handleResetBalance = async (user: User) => {
     setSaving(true);
     try {
@@ -148,7 +238,6 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ balance: 0 }),
       });
-
       if (!res.ok) throw new Error('Lỗi reset balance');
       toast({ title: 'Thành công', description: `Đã reset số dư của ${user.name}` });
       await fetchUsers();
@@ -235,8 +324,8 @@ export default function AdminPage() {
 
       {/* Main */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {/* Stats + Add button */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card className="shadow-sm">
             <CardContent className="p-4 text-center">
               <Users className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
@@ -251,13 +340,85 @@ export default function AdminPage() {
               <p className="text-xs text-muted-foreground">Admin</p>
             </CardContent>
           </Card>
-          <Card className="shadow-sm col-span-2 sm:col-span-1">
+          <Card className="shadow-sm">
             <CardContent className="p-4 text-center">
               <UserIcon className="h-5 w-5 mx-auto text-emerald-600 mb-1" />
               <p className="text-2xl font-bold">{users.filter(u => u.role === 'USER').length}</p>
               <p className="text-xs text-muted-foreground">Thành viên</p>
             </CardContent>
           </Card>
+          <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetAddForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 h-full min-h-[76px]">
+                <UserPlus className="h-5 w-5" />
+                <span className="text-sm font-medium">Thêm thành viên</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Thêm thành viên mới</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Username <span className="text-red-500">*</span></Label>
+                  <Input
+                    value={addUsername}
+                    onChange={(e) => setAddUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    placeholder="VD: minh, hung"
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted-foreground">Chỉ chữ thường, số, dấu gạch dưới. Dùng để đăng nhập.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tên hiển thị <span className="text-red-500">*</span></Label>
+                  <Input
+                    value={addName}
+                    onChange={(e) => setAddName(e.target.value)}
+                    placeholder="VD: Minh Trần"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>
+                    <span className="inline-flex items-center gap-1">
+                      <MessageCircle className="h-3 w-3" />
+                      Nick Zalo
+                    </span>
+                  </Label>
+                  <Input
+                    value={addZalo}
+                    onChange={(e) => setAddZalo(e.target.value)}
+                    placeholder="VD: minh_deptrai"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vai trò</Label>
+                  <Select value={addRole} onValueChange={setAddRole}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USER">USER - Thành viên</SelectItem>
+                      <SelectItem value="ADMIN">ADMIN - Quản trị</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <DialogClose asChild>
+                  <Button variant="outline">Hủy</Button>
+                </DialogClose>
+                <Button
+                  onClick={handleAdd}
+                  disabled={saving || !addUsername.trim() || !addName.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  Thêm
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* User list */}
@@ -298,8 +459,14 @@ export default function AdminPage() {
                           {user.role}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
                         <span>@{user.username}</span>
+                        {user.zaloNickname && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600">
+                            <MessageCircle className="h-3 w-3" />
+                            {user.zaloNickname}
+                          </span>
+                        )}
                         <span className={user.balance > 0 ? 'text-emerald-600' : user.balance < 0 ? 'text-red-500' : ''}>
                           Số dư: {formatMoney(user.balance)}
                         </span>
@@ -317,7 +484,7 @@ export default function AdminPage() {
                         onClick={() => handleResetBalance(user)}
                       >
                         <RotateCcw className="h-3 w-3" />
-                        Reset dư
+                        <span className="hidden sm:inline">Reset dư</span>
                       </Button>
                     )}
                     <Button
@@ -327,8 +494,41 @@ export default function AdminPage() {
                       onClick={() => openEdit(user)}
                     >
                       <Pencil className="h-3 w-3" />
-                      Chỉnh sửa
+                      Sửa
                     </Button>
+                    {user.role !== 'ADMIN' && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                            disabled={saving}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span className="hidden sm:inline">Xóa</span>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Xóa thành viên</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Bạn có chắc muốn xóa <strong>{user.name}</strong> (@{user.username})?
+                              Hành động này không thể hoàn tác. Các session và settlement liên quan cũng sẽ bị xóa.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Hủy</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(user.id)}
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              Xóa
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                   </div>
                 </div>
               ))}
@@ -356,6 +556,19 @@ export default function AdminPage() {
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder="Nhập tên hiển thị"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  <span className="inline-flex items-center gap-1">
+                    <MessageCircle className="h-3 w-3" />
+                    Nick Zalo
+                  </span>
+                </Label>
+                <Input
+                  value={editZalo}
+                  onChange={(e) => setEditZalo(e.target.value)}
+                  placeholder="VD: minh_deptrai"
                 />
               </div>
               <div className="space-y-2">

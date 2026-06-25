@@ -44,6 +44,7 @@ import {
   Dumbbell,
   LogOut,
   UserCog,
+  MessageCircle,
 } from 'lucide-react';
 import { useAuthStore, type AuthUser } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +54,7 @@ interface User {
   id: string;
   username: string;
   name: string;
+  zaloNickname: string;
   role: string;
   balance: number;
 }
@@ -63,8 +65,8 @@ interface Settlement {
   toUserId: string;
   amount: number;
   status: string;
-  fromUser: { id: string; name: string; role: string };
-  toUser: { id: string; name: string; role: string };
+  fromUser: { id: string; name: string; zaloNickname: string; role: string };
+  toUser: { id: string; name: string; zaloNickname: string; role: string };
   createdAt: string;
 }
 
@@ -422,6 +424,11 @@ export default function Dashboard() {
                             onCheckedChange={() => toggleParticipant(u.id)}
                           />
                           <span className="text-sm">{u.name}</span>
+                          {u.zaloNickname && (
+                            <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+                              <MessageCircle className="h-3 w-3" />{u.zaloNickname}
+                            </span>
+                          )}
                           <Badge variant="outline" className="text-xs ml-auto">
                             {u.role}
                           </Badge>
@@ -487,10 +494,20 @@ export default function Dashboard() {
                         <span className="text-sm font-medium text-red-600">
                           {s.fromUser.name}
                         </span>
+                        {s.fromUser.zaloNickname && (
+                          <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+                            <MessageCircle className="h-3 w-3" />{s.fromUser.zaloNickname}
+                          </span>
+                        )}
                         <span className="text-muted-foreground text-xs">→</span>
                         <span className="text-sm font-medium text-emerald-600">
                           {s.toUser.name}
                         </span>
+                        {s.toUser.zaloNickname && (
+                          <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+                            <MessageCircle className="h-3 w-3" />{s.toUser.zaloNickname}
+                          </span>
+                        )}
                         {statusBadge(s.status)}
                       </div>
                       <p className="text-lg font-semibold tabular-nums">{formatMoney(s.amount)}</p>

@@ -5,6 +5,7 @@ export interface AuthUser {
   id: string;
   username: string;
   name: string;
+  zaloNickname: string;
   role: string;
   balance: number;
 }

@@ -11,6 +11,7 @@ model User {
   id               String             @id @default(uuid())
   username         String             @unique
   name             String
+  zaloNickname     String             @default("")
   role             String             @default("USER")
   balance          Int                @default(0)
   paidSessions     Session[]          @relation("PayerSessions")

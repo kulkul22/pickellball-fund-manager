@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     id: user.id,
     username: user.username,
     name: user.name,
+    zaloNickname: user.zaloNickname,
     role: user.role,
     balance: user.balance,
   });
