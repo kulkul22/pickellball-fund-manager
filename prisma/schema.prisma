@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String             @id @default(uuid())
+  name             String
+  role             String             @default("USER")
+  balance          Int                @default(0)
+  paidSessions     Session[]          @relation("PayerSessions")
+  participations   SessionParticipant[]
+  settlementsFrom  Settlement[]       @relation("SettlementFrom")
+  settlementsTo    Settlement[]       @relation("SettlementTo")
+}
+
+model Session {
+  id           String                @id @default(uuid())
+  date         DateTime
+  location     String
+  totalCost    Int
+  payerId      String
+  payer        User                  @relation("PayerSessions", fields: [payerId], references: [id])
+  createdAt    DateTime              @default(now())
+  participants SessionParticipant[]
+}
+
+model SessionParticipant {
+  id        String  @id @default(uuid())
+  sessionId String
+  userId    String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
+}
+
+model Settlement {
+  id         String   @id @default(uuid())
+  fromUserId String
+  toUserId   String
+  amount     Int
+  status     String   @default("PENDING")
+  week       Int      @default(1)
+  createdAt  DateTime @default(now())
+  fromUser   User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
+  toUser     User     @relation("SettlementTo", fields: [toUserId], references: [id])
+}
