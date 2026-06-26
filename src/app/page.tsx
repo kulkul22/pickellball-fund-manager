@@ -45,6 +45,7 @@ import {
   LogOut,
   UserCog,
   MessageCircle,
+  BarChart3,
 } from 'lucide-react';
 import { useAuthStore, type AuthUser } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
@@ -302,6 +303,13 @@ export default function Dashboard() {
               </Button>
             </Link>
 
+            <Link href="/stats">
+              <Button variant="ghost" size="sm" className="gap-2 text-emerald-700">
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline">Thống kê</span>
+              </Button>
+            </Link>
+
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -511,6 +519,9 @@ export default function Dashboard() {
                         {statusBadge(s.status)}
                       </div>
                       <p className="text-lg font-semibold tabular-nums">{formatMoney(s.amount)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Ngày nợ: {new Date(s.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
