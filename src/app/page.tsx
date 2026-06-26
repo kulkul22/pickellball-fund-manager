@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -41,12 +41,12 @@ import {
   CheckCircle2,
   ShieldCheck,
   Loader2,
-  Dumbbell,
   LogOut,
   UserCog,
   MessageCircle,
   BarChart3,
 } from 'lucide-react';
+import { PickleballPaddle } from '@/components/ui/pickleball-icon';
 import { useAuthStore, type AuthUser } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
 
@@ -74,6 +74,7 @@ interface Settlement {
 /* ─── Component ─── */
 export default function Dashboard() {
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
   const { user: authUser, logout, updateBalance } = useAuthStore();
 
@@ -83,7 +84,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [settling, setSettling] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Form state
@@ -103,12 +103,18 @@ export default function Dashboard() {
   // Fetch users
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch('/api/users', { cache: 'no-store' });
       const data = await res.json();
       setUsers(data);
       // Update balance in auth store
       const me = data.find((u: User) => u.id === authUser?.id);
       if (me) updateBalance(me.balance);
+
+      // Tự động chọn Nguyên (admin) làm người trả tiền mặc định
+      const adminUser = data.find((u: User) => u.username === 'admin');
+      if (adminUser) {
+        setFormPayerId(adminUser.id);
+      }
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được danh sách user', variant: 'destructive' });
     }
@@ -118,7 +124,7 @@ export default function Dashboard() {
   const fetchSettlements = useCallback(async () => {
     if (!authUser) return;
     try {
-      const res = await fetch(`/api/settlements?userId=${authUser.id}`);
+      const res = await fetch(`/api/settlements?userId=${authUser.id}`, { cache: 'no-store' });
       const data = await res.json();
       setSettlements(data);
     } catch {
@@ -133,21 +139,57 @@ export default function Dashboard() {
     }
   }, [authUser, fetchUsers, fetchSettlements]);
 
+  // Refetch khi user quay lại dashboard (navigate từ /history về /)
+  useEffect(() => {
+    if (authUser && pathname === '/') {
+      fetchUsers();
+      fetchSettlements();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const handleLogout = () => {
     logout();
     router.replace('/login');
   };
 
   // Toggle participant in form
+  // Toggle participant in form (auto-toggle couples)
   const toggleParticipant = (userId: string) => {
-    setFormParticipants((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
+    const u = users.find((user) => user.id === userId);
+    if (!u) return;
+
+    setFormParticipants((prev) => {
+      let next = [...prev];
+      const isSelected = prev.includes(userId);
+
+      // Tìm partner tương ứng
+      let partnerUsername = '';
+      if (u.username === 'admin') partnerUsername = 'yen';
+      else if (u.username === 'yen') partnerUsername = 'admin';
+      else if (u.username === 'loc') partnerUsername = 'myvan';
+      else if (u.username === 'myvan') partnerUsername = 'loc';
+
+      const partner = users.find((user) => user.username === partnerUsername);
+
+      if (isSelected) {
+        next = next.filter((id) => id !== userId);
+        if (partner) {
+          next = next.filter((id) => id !== partner.id);
+        }
+      } else {
+        if (!next.includes(userId)) next.push(userId);
+        if (partner && !next.includes(partner.id)) {
+          next.push(partner.id);
+        }
+      }
+      return next;
+    });
   };
 
   // Create session
   const handleCreateSession = async () => {
-    if (!formDate || !formLocation || !formCost || !formPayerId || formParticipants.length === 0) {
+    if (!formDate || !formCost || !formPayerId || formParticipants.length === 0) {
       toast({ title: 'Lỗi', description: 'Vui lòng điền đầy đủ thông tin', variant: 'destructive' });
       return;
     }
@@ -159,7 +201,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: formDate,
-          location: formLocation,
+          location: formLocation.trim() || 'Sân Pickleball',
           totalCost: parseInt(formCost),
           payerId: formPayerId,
           participantIds: formParticipants,
@@ -176,7 +218,9 @@ export default function Dashboard() {
       setFormDate('');
       setFormLocation('');
       setFormCost('');
-      setFormPayerId('');
+      
+      const adminUser = users.find((u) => u.username === 'admin');
+      setFormPayerId(adminUser ? adminUser.id : '');
       setFormParticipants([]);
       await fetchUsers();
       await fetchSettlements();
@@ -219,28 +263,6 @@ export default function Dashboard() {
     }
   };
 
-  // Tổng kết
-  const handleSettle = async () => {
-    setSettling(true);
-    try {
-      const res = await fetch('/api/settlements', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi tổng kết');
-
-      toast({ title: 'Tổng kết thành công', description: data.message || 'Đã tạo settlements' });
-      await fetchUsers();
-      await fetchSettlements();
-    } catch (e: unknown) {
-      toast({
-        title: 'Lỗi',
-        description: e instanceof Error ? e.message : 'Đã xảy ra lỗi',
-        variant: 'destructive',
-      });
-    } finally {
-      setSettling(false);
-    }
-  };
-
   const balanceColor = authUser
     ? authUser.balance > 0
       ? 'text-emerald-600'
@@ -277,7 +299,7 @@ export default function Dashboard() {
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-emerald-600 flex items-center justify-center">
-              <Dumbbell className="h-5 w-5 text-white" />
+              <PickleballPaddle className="h-5 w-5 text-white" />
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">Quản lý quỹ Pickleball</h1>
@@ -388,9 +410,9 @@ export default function Dashboard() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Địa điểm</Label>
+                    <Label>Địa điểm (Không bắt buộc)</Label>
                     <Input
-                      placeholder="VD: Sân Pickleball Phú Nhuận"
+                      placeholder="VD: Sân Pickleball Phú Nhuận (mặc định: Sân Pickleball)"
                       value={formLocation}
                       onChange={(e) => setFormLocation(e.target.value)}
                     />
@@ -460,20 +482,6 @@ export default function Dashboard() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-
-            <Button
-              variant="outline"
-              onClick={handleSettle}
-              disabled={settling}
-              className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
-            >
-              {settling ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ArrowLeftRight className="h-4 w-4" />
-              )}
-              Tổng kết
-            </Button>
           </div>
         )}
 
