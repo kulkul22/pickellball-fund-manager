@@ -58,3 +58,4 @@ data-export.json
 
 # SQLite database files
 /db/
+.vercel

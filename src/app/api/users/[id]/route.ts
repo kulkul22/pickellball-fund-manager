@@ -45,7 +45,28 @@ export async function DELETE(
     return NextResponse.json({ error: "Không thể xóa tài khoản Admin" }, { status: 400 });
   }
 
-  await db.user.delete({ where: { id } });
+  // Xóa tất cả dữ liệu liên quan trong transaction để tránh lỗi foreign key
+  await db.$transaction(async (tx) => {
+    // 1. Xóa participations của user
+    await tx.sessionParticipant.deleteMany({ where: { userId: id } });
+
+    // 2. Xóa settlements liên quan (cả gửi và nhận)
+    await tx.settlement.deleteMany({
+      where: { OR: [{ fromUserId: id }, { toUserId: id }] },
+    });
+
+    // 3. Xóa sessions mà user là người trả tiền (payer)
+    //    (trước tiên xóa participants của các session đó)
+    const payerSessions = await tx.session.findMany({ where: { payerId: id }, select: { id: true } });
+    if (payerSessions.length > 0) {
+      const sessionIds = payerSessions.map((s) => s.id);
+      await tx.sessionParticipant.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.session.deleteMany({ where: { payerId: id } });
+    }
+
+    // 4. Xóa user
+    await tx.user.delete({ where: { id } });
+  });
 
   return NextResponse.json({ message: "Đã xóa người dùng" });
 }
