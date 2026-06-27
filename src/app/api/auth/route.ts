@@ -3,11 +3,18 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { username } = body;
+  const { username, password } = body;
 
   if (!username || typeof username !== 'string' || username.trim().length === 0) {
     return NextResponse.json(
       { error: "Vui lòng nhập tên đăng nhập" },
+      { status: 400 }
+    );
+  }
+
+  if (!password || typeof password !== 'string' || password.length === 0) {
+    return NextResponse.json(
+      { error: "Vui lòng nhập mật khẩu" },
       { status: 400 }
     );
   }
@@ -18,8 +25,15 @@ export async function POST(req: NextRequest) {
 
   if (!user) {
     return NextResponse.json(
-      { error: "Không tìm thấy người dùng" },
-      { status: 404 }
+      { error: "Tên đăng nhập hoặc mật khẩu không chính xác" },
+      { status: 401 }
+    );
+  }
+
+  if (user.password !== password) {
+    return NextResponse.json(
+      { error: "Tên đăng nhập hoặc mật khẩu không chính xác" },
+      { status: 401 }
     );
   }
 

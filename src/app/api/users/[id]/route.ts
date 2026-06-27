@@ -66,6 +66,9 @@ export async function DELETE(
 
     // 4. Xóa user
     await tx.user.delete({ where: { id } });
+  }, {
+    maxWait: 15000,
+    timeout: 30000,
   });
 
   return NextResponse.json({ message: "Đã xóa người dùng" });

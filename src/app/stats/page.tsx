@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -23,17 +25,18 @@ import {
   ArrowLeft,
   BarChart3,
   Loader2,
-  Dumbbell,
   LogOut,
   Home,
   CalendarDays,
 } from 'lucide-react';
+import { PickleballPaddle } from '@/components/ui/pickleball-icon';
 import { useAuthStore } from '@/lib/auth-store';
 
 /* ─── Types ─── */
 interface Participant {
   id: string;
   name: string;
+  username: string;
 }
 
 interface Session {
@@ -113,7 +116,7 @@ export default function StatsPage() {
     setLoading(true);
     try {
       const url = week ? `/api/sessions/weekly?week=${week}` : '/api/sessions/weekly';
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       const json: WeeklyData = await res.json();
       setData(json);
       if (json.targetWeek) setSelectedWeek(json.targetWeek);
@@ -143,6 +146,11 @@ export default function StatsPage() {
   const sessionCount: Record<string, number> = {};
 
   if (data) {
+    const adminParticipant = data.participants.find(p => p.username === 'admin');
+    const yenParticipant = data.participants.find(p => p.username === 'yen');
+    const locParticipant = data.participants.find(p => p.username === 'loc');
+    const myvanParticipant = data.participants.find(p => p.username === 'myvan');
+
     for (const p of data.participants) {
       totalPerPerson[p.id] = 0;
       sessionCount[p.id] = 0;
@@ -152,7 +160,15 @@ export default function StatsPage() {
       const participantIds = new Set(s.participants.map((p) => p.user.id));
       for (const p of data.participants) {
         if (participantIds.has(p.id)) {
-          totalPerPerson[p.id] = (totalPerPerson[p.id] ?? 0) + costPerPerson;
+          // Nếu là Yến, phí sẽ cộng dồn vào Nguyên
+          // Nếu là Mỹ Vân, phí sẽ cộng dồn vào Lộc
+          let targetId = p.id;
+          if (yenParticipant && p.id === yenParticipant.id && adminParticipant) {
+            targetId = adminParticipant.id;
+          } else if (myvanParticipant && p.id === myvanParticipant.id && locParticipant) {
+            targetId = locParticipant.id;
+          }
+          totalPerPerson[targetId] = (totalPerPerson[targetId] ?? 0) + costPerPerson;
           sessionCount[p.id] = (sessionCount[p.id] ?? 0) + 1;
         }
       }
@@ -252,7 +268,7 @@ export default function StatsPage() {
         {!loading && (!data || data.sessions.length === 0) && (
           <Card className="shadow-sm">
             <div className="py-16 text-center">
-              <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+              <PickleballPaddle className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
               <p className="text-muted-foreground">Chưa có buổi đánh nào trong tuần này.</p>
               <Link href="/">
                 <Button variant="link" className="mt-2">Quay lại Dashboard</Button>
@@ -355,12 +371,22 @@ export default function StatsPage() {
                         {/* Participant columns */}
                         {data.participants.map((p) => {
                           const attended = participantIds.has(p.id);
-                          // Green tick if: attended + has SETTLED settlement with this session's payer
                           const isPayer = p.id === session.payer.id;
-                          const hasSettled =
-                            !isPayer &&
-                            attended &&
-                            settledPairsSet.has(`${p.id}|${session.payer.id}`);
+                          
+                          const locParticipant = data.participants.find(u => u.username === 'loc');
+                          
+                          let hasSettled = false;
+                          if (!isPayer && attended) {
+                            if (p.username === 'yen') {
+                              hasSettled = true;
+                            } else if (p.username === 'myvan' && locParticipant) {
+                              const locIsPayer = locParticipant.id === session.payer.id;
+                              const locHasSettled = settledPairsSet.has(`${locParticipant.id}|${session.payer.id}`);
+                              hasSettled = locIsPayer || locHasSettled;
+                            } else {
+                              hasSettled = settledPairsSet.has(`${p.id}|${session.payer.id}`);
+                            }
+                          }
 
                           return (
                             <td key={p.id} className="px-3 py-3 text-center">
@@ -457,9 +483,17 @@ export default function StatsPage() {
                       </div>
                       <span className="font-semibold text-sm truncate">{p.name}</span>
                     </div>
-                    <p className="text-xl font-bold tabular-nums text-amber-700">
-                      {formatMoney(total)}
-                    </p>
+                    <div className="flex items-baseline gap-1">
+                      <p className="text-xl font-bold tabular-nums text-amber-700">
+                        {formatMoney(total)}
+                      </p>
+                      {p.username === 'yen' && (
+                        <span className="text-[10px] text-muted-foreground font-normal">(Nguyên trả)</span>
+                      )}
+                      {p.username === 'myvan' && (
+                        <span className="text-[10px] text-muted-foreground font-normal">(Lộc trả)</span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {count}/{data!.sessions.length} buổi
                     </p>

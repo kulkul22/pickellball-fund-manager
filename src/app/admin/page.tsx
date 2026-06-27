@@ -43,7 +43,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Dumbbell,
   Loader2,
   Pencil,
   Users,
@@ -56,6 +55,7 @@ import {
   Trash2,
   MessageCircle,
 } from 'lucide-react';
+import { PickleballPaddle } from '@/components/ui/pickleball-icon';
 import { useAuthStore } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
 
@@ -102,7 +102,7 @@ export default function AdminPage() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch('/api/users', { cache: 'no-store' });
       const data = await res.json();
       setUsers(data);
     } catch {
@@ -286,7 +286,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-2">
             <Link href="/">
               <Button variant="ghost" size="sm" className="gap-2">
-                <Dumbbell className="h-4 w-4" />
+                <PickleballPaddle className="h-4 w-4" />
                 <span className="hidden sm:inline">Dashboard</span>
               </Button>
             </Link>

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dumbbell, Loader2, LogIn } from 'lucide-react';
+import { Loader2, LogIn } from 'lucide-react';
+import { PickleballPaddle } from '@/components/ui/pickleball-icon';
 import { useAuthStore } from '@/lib/auth-store';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const { toast } = useToast();
   const login = useAuthStore((s) => s.login);
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -27,12 +29,20 @@ export default function LoginPage() {
       return;
     }
 
+    if (!password) {
+      setError('Vui lòng nhập mật khẩu');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim().toLowerCase() }),
+        body: JSON.stringify({
+          username: username.trim().toLowerCase(),
+          password
+        }),
       });
 
       const data = await res.json();
@@ -45,11 +55,7 @@ export default function LoginPage() {
       login(data);
       toast({ title: 'Đăng nhập thành công', description: `Xin chào, ${data.name}!` });
 
-      if (data.role === 'ADMIN') {
-        router.push('/admin');
-      } else {
-        router.push('/');
-      }
+      router.push('/');
     } catch {
       setError('Lỗi kết nối server');
     } finally {
@@ -63,7 +69,7 @@ export default function LoginPage() {
       <header className="border-b bg-white/80 backdrop-blur-md">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-emerald-600 flex items-center justify-center">
-            <Dumbbell className="h-5 w-5 text-white" />
+            <PickleballPaddle className="h-5 w-5 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight">Quản lý quỹ Pickleball</h1>
@@ -81,7 +87,7 @@ export default function LoginPage() {
             </div>
             <CardTitle className="text-xl">Đăng nhập</CardTitle>
             <CardDescription>
-              Nhập tên đăng nhập để tiếp tục
+              Nhập tên đăng nhập và mật khẩu để tiếp tục
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -90,7 +96,6 @@ export default function LoginPage() {
                 <Label htmlFor="username">Tên đăng nhập</Label>
                 <Input
                   id="username"
-                  placeholder="VD: admin, an, binh"
                   value={username}
                   onChange={(e) => {
                     setUsername(e.target.value);
@@ -98,6 +103,20 @@ export default function LoginPage() {
                   }}
                   autoComplete="username"
                   autoFocus
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Mật khẩu</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError('');
+                  }}
+                  autoComplete="current-password"
                 />
               </div>
 
@@ -119,33 +138,6 @@ export default function LoginPage() {
                 )}
                 Đăng nhập
               </Button>
-
-              <div className="pt-2 border-t">
-                <p className="text-xs text-muted-foreground text-center mb-2">
-                  Tài khoản demo:
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { user: 'admin', label: 'Admin Tuấn' },
-                    { user: 'an', label: 'User An' },
-                    { user: 'binh', label: 'User Bình' },
-                  ].map((item) => (
-                    <button
-                      key={item.user}
-                      type="button"
-                      onClick={() => {
-                        setUsername(item.user);
-                        setError('');
-                      }}
-                      className="text-xs px-2 py-1.5 rounded-lg border bg-white hover:bg-muted transition-colors text-center"
-                    >
-                      <span className="font-medium">{item.user}</span>
-                      <br />
-                      <span className="text-muted-foreground">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </form>
           </CardContent>
         </Card>

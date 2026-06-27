@@ -69,6 +69,131 @@ interface Settlement {
   fromUser: { id: string; name: string; zaloNickname: string; role: string };
   toUser: { id: string; name: string; zaloNickname: string; role: string };
   createdAt: string;
+  debtDates?: string[];
+}
+
+interface MergedSettlement {
+  id: string;
+  originalIds: string[];
+  fromUserId: string;
+  fromUserIds: string[];
+  toUserId: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+  debtDates: string[];
+  fromUser: {
+    id: string;
+    name: string;
+    zaloNickname: string;
+    role: string;
+  };
+  toUser: {
+    id: string;
+    name: string;
+    zaloNickname: string;
+    role: string;
+  };
+}
+
+function getMergedSettlements(settlements: Settlement[], users: User[]): MergedSettlement[] {
+  const locUser = users.find(u => u.username === 'loc');
+  const myvanUser = users.find(u => u.username === 'myvan');
+
+  const locId = locUser?.id;
+  const myvanId = myvanUser?.id;
+
+  const mergedList: MergedSettlement[] = [];
+  const processedIds = new Set<string>();
+
+  for (const s of settlements) {
+    if (processedIds.has(s.id)) continue;
+
+    const isLocOrVan = (s.fromUserId === locId || s.fromUserId === myvanId);
+    
+    if (isLocOrVan) {
+      // Find the partner's settlement to the same receiver (toUserId)
+      const partnerId = s.fromUserId === locId ? myvanId : locId;
+      const partnerSettlement = partnerId 
+        ? settlements.find(other => !processedIds.has(other.id) && other.id !== s.id && other.fromUserId === partnerId && other.toUserId === s.toUserId)
+        : null;
+
+      const fromUserIds = locId && myvanId ? [locId, myvanId] : [s.fromUserId];
+
+      if (partnerSettlement) {
+        processedIds.add(s.id);
+        processedIds.add(partnerSettlement.id);
+
+        const combinedDatesSet = new Set<string>();
+        if (s.debtDates) s.debtDates.forEach(d => combinedDatesSet.add(d));
+        if (partnerSettlement.debtDates) partnerSettlement.debtDates.forEach(d => combinedDatesSet.add(d));
+        
+        const debtDates = Array.from(combinedDatesSet).sort((a, b) => {
+          const parseDate = (dStr: string) => {
+            const [d, m, y] = dStr.split('/').map(Number);
+            return new Date(y, m - 1, d).getTime();
+          };
+          return parseDate(a) - parseDate(b);
+        });
+
+        const status = (s.status === 'SENT' && partnerSettlement.status === 'SENT') ? 'SENT' : 'PENDING';
+
+        mergedList.push({
+          id: `${s.id},${partnerSettlement.id}`,
+          originalIds: [s.id, partnerSettlement.id],
+          fromUserId: s.fromUserId,
+          fromUserIds,
+          toUserId: s.toUserId,
+          amount: s.amount + partnerSettlement.amount,
+          status,
+          createdAt: s.createdAt,
+          debtDates,
+          fromUser: {
+            id: s.fromUserId,
+            name: 'Lộc + Mỹ Vân',
+            zaloNickname: [s.fromUser.zaloNickname, partnerSettlement.fromUser.zaloNickname].filter(Boolean).join(', '),
+            role: 'USER'
+          },
+          toUser: s.toUser
+        });
+      } else {
+        processedIds.add(s.id);
+        mergedList.push({
+          id: s.id,
+          originalIds: [s.id],
+          fromUserId: s.fromUserId,
+          fromUserIds,
+          toUserId: s.toUserId,
+          amount: s.amount,
+          status: s.status,
+          createdAt: s.createdAt,
+          debtDates: s.debtDates || [],
+          fromUser: {
+            ...s.fromUser,
+            name: 'Lộc + Mỹ Vân'
+          },
+          toUser: s.toUser
+        });
+      }
+    } else {
+      processedIds.add(s.id);
+      mergedList.push({
+        id: s.id,
+        originalIds: [s.id],
+        fromUserId: s.fromUserId,
+        fromUserIds: [s.fromUserId],
+        toUserId: s.toUserId,
+        amount: s.amount,
+        status: s.status,
+        createdAt: s.createdAt,
+        debtDates: s.debtDates || [],
+        fromUser: s.fromUser,
+        toUser: s.toUser
+      });
+    }
+  }
+
+  return mergedList;
 }
 
 /* ─── Component ─── */
@@ -88,8 +213,8 @@ export default function Dashboard() {
 
   // Form state
   const [formDate, setFormDate] = useState('');
-  const [formLocation, setFormLocation] = useState('');
-  const [formCost, setFormCost] = useState('');
+  const [formLocation, setFormLocation] = useState('Smile');
+  const [formCost, setFormCost] = useState('280000');
   const [formPayerId, setFormPayerId] = useState('');
   const [formParticipants, setFormParticipants] = useState<string[]>([]);
 
@@ -118,11 +243,12 @@ export default function Dashboard() {
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được danh sách user', variant: 'destructive' });
     }
-  }, [authUser?.id, toast, updateBalance]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id]);
 
   // Fetch settlements for current user
   const fetchSettlements = useCallback(async () => {
-    if (!authUser) return;
+    if (!authUser?.id) return;
     try {
       const res = await fetch(`/api/settlements?userId=${authUser.id}`, { cache: 'no-store' });
       const data = await res.json();
@@ -130,23 +256,46 @@ export default function Dashboard() {
     } catch {
       setSettlements([]);
     }
-  }, [authUser]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id]);
 
-  // Initialize
+  // Initialize — chỉ chạy 1 lần khi authUser sẵn sàng
   useEffect(() => {
-    if (authUser) {
+    if (authUser?.id) {
       Promise.all([fetchUsers(), fetchSettlements()]).then(() => setLoading(false));
     }
-  }, [authUser, fetchUsers, fetchSettlements]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id]);
 
   // Refetch khi user quay lại dashboard (navigate từ /history về /)
   useEffect(() => {
-    if (authUser && pathname === '/') {
+    if (authUser?.id && pathname === '/') {
       fetchUsers();
       fetchSettlements();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
+
+  // Tự động chọn Nguyên (admin) & Yến trong danh sách đánh khi Nguyên là người trả tiền
+  useEffect(() => {
+    const adminUser = users.find((u) => u.username === 'admin');
+    if (adminUser && formPayerId === adminUser.id) {
+      setFormParticipants((prev) => {
+        let next = [...prev];
+        let updated = false;
+        if (!next.includes(adminUser.id)) {
+          next.push(adminUser.id);
+          updated = true;
+        }
+        const yenUser = users.find((u) => u.username === 'yen');
+        if (yenUser && !next.includes(yenUser.id)) {
+          next.push(yenUser.id);
+          updated = true;
+        }
+        return updated ? next : prev;
+      });
+    }
+  }, [formPayerId, users]);
 
   const handleLogout = () => {
     logout();
@@ -216,8 +365,8 @@ export default function Dashboard() {
       toast({ title: 'Thành công', description: 'Đã tạo buổi đánh mới' });
       setModalOpen(false);
       setFormDate('');
-      setFormLocation('');
-      setFormCost('');
+      setFormLocation('Smile');
+      setFormCost('280000');
       
       const adminUser = users.find((u) => u.username === 'admin');
       setFormPayerId(adminUser ? adminUser.id : '');
@@ -252,6 +401,7 @@ export default function Dashboard() {
 
       toast({ title: 'Thành công', description: 'Đã cập nhật trạng thái' });
       await fetchSettlements();
+      await fetchUsers();
     } catch (e: unknown) {
       toast({
         title: 'Lỗi',
@@ -291,6 +441,8 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const displaySettlements = getMergedSettlements(settlements, users);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-green-50 via-white to-amber-50">
@@ -442,7 +594,7 @@ export default function Dashboard() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Thành viên tham gia</Label>
+                    <Label>Thành viên tham gia (Đã chọn: {formParticipants.length})</Label>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {users.map((u) => (
                         <label
@@ -494,13 +646,13 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            {settlements.length === 0 ? (
+            {displaySettlements.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 Không có giao dịch chờ xử lý 🎉
               </p>
             ) : (
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {settlements.map((s) => (
+                {displaySettlements.map((s) => (
                   <div
                     key={s.id}
                     className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border bg-card"
@@ -528,12 +680,14 @@ export default function Dashboard() {
                       </div>
                       <p className="text-lg font-semibold tabular-nums">{formatMoney(s.amount)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Ngày nợ: {new Date(s.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        Ngày nợ: {s.debtDates && s.debtDates.length > 0
+                          ? s.debtDates.join(', ')
+                          : new Date(s.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      {authUser.id === s.fromUserId && s.status === 'PENDING' && (
+                      {s.fromUserIds.includes(authUser.id) && s.status === 'PENDING' && (
                         <Button
                           size="sm"
                           variant="outline"

@@ -14,6 +14,7 @@ model User {
   name             String
   zaloNickname     String             @default("")
   role             String             @default("USER")
+  password         String             @default("12345")
   balance          Int                @default(0)
   paidSessions     Session[]          @relation("PayerSessions")
   participations   SessionParticipant[]

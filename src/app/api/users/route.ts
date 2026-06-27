@@ -1,11 +1,39 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const users = await db.user.findMany({
-    orderBy: { name: "asc" },
     select: { id: true, username: true, name: true, zaloNickname: true, role: true, balance: true },
   });
+
+  const getGroupKey = (p: { username: string; name: string }) => {
+    if (p.username === 'admin' || p.username === 'yen') {
+      return 'Nguyên & Yến';
+    }
+    if (p.username === 'loc' || p.username === 'myvan') {
+      return 'Lộc & Vân';
+    }
+    return p.name;
+  };
+
+  const getSubOrder = (p: { username: string }) => {
+    if (p.username === 'admin') return 1;
+    if (p.username === 'yen') return 2;
+    if (p.username === 'loc') return 1;
+    if (p.username === 'myvan') return 2;
+    return 0;
+  };
+
+  users.sort((a, b) => {
+    const groupA = getGroupKey(a);
+    const groupB = getGroupKey(b);
+    const comp = groupA.localeCompare(groupB, 'vi');
+    if (comp !== 0) return comp;
+    return getSubOrder(a) - getSubOrder(b);
+  });
+
   return NextResponse.json(users);
 }
 

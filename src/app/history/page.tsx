@@ -13,8 +13,36 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ArrowLeft, MapPin, Calendar, Users, Wallet, Loader2, Dumbbell, LogOut, Home } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ArrowLeft, MapPin, Calendar, Users, Wallet, Loader2, LogOut, Home, Pencil, Trash2, MessageCircle } from 'lucide-react';
+import { PickleballPaddle } from '@/components/ui/pickleball-icon';
 import { useAuthStore } from '@/lib/auth-store';
+import { useToast } from '@/hooks/use-toast';
+
+interface User {
+  id: string;
+  username: string;
+  name: string;
+  zaloNickname: string;
+  role: string;
+}
 
 interface Participant {
   user: { id: string; name: string };
@@ -31,9 +59,23 @@ interface Session {
 
 export default function HistoryPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const { user: authUser, logout } = useAuthStore();
+  
+  // Data states
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Edit form states
+  const [editSession, setEditSession] = useState<Session | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [formDate, setFormDate] = useState('');
+  const [formLocation, setFormLocation] = useState('');
+  const [formCost, setFormCost] = useState('');
+  const [formPayerId, setFormPayerId] = useState('');
+  const [formParticipants, setFormParticipants] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!authUser) {
@@ -44,12 +86,13 @@ export default function HistoryPage() {
   useEffect(() => {
     if (authUser) {
       fetchSessions();
+      fetchUsers();
     }
   }, [authUser]);
 
   async function fetchSessions() {
     try {
-      const res = await fetch('/api/sessions');
+      const res = await fetch('/api/sessions', { cache: 'no-store' });
       const data = await res.json();
       setSessions(data);
     } catch {
@@ -59,10 +102,104 @@ export default function HistoryPage() {
     }
   }
 
+  async function fetchUsers() {
+    try {
+      const res = await fetch('/api/users', { cache: 'no-store' });
+      const data = await res.json();
+      setUsers(data);
+    } catch {
+      setUsers([]);
+    }
+  }
+
   const handleLogout = () => {
     logout();
     router.replace('/login');
   };
+
+  // Toggle participant in edit form (auto-toggle couples)
+  const toggleParticipant = (userId: string) => {
+    const u = users.find((user) => user.id === userId);
+    if (!u) return;
+
+    setFormParticipants((prev) => {
+      let next = [...prev];
+      const isSelected = prev.includes(userId);
+
+      // Tìm partner tương ứng
+      let partnerUsername = '';
+      if (u.username === 'admin') partnerUsername = 'yen';
+      else if (u.username === 'yen') partnerUsername = 'admin';
+      else if (u.username === 'loc') partnerUsername = 'myvan';
+      else if (u.username === 'myvan') partnerUsername = 'loc';
+
+      const partner = users.find((user) => user.username === partnerUsername);
+
+      if (isSelected) {
+        next = next.filter((id) => id !== userId);
+        if (partner) {
+          next = next.filter((id) => id !== partner.id);
+        }
+      } else {
+        if (!next.includes(userId)) next.push(userId);
+        if (partner && !next.includes(partner.id)) {
+          next.push(partner.id);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleEditClick = (session: Session) => {
+    setEditSession(session);
+    setFormDate(session.date.split('T')[0]);
+    setFormLocation(session.location);
+    setFormCost(String(session.totalCost));
+    setFormPayerId(session.payer.id);
+    setFormParticipants(session.participants.map((p) => p.user.id));
+    setEditOpen(true);
+  };
+
+  const handleUpdateSession = async () => {
+    if (!formDate || !formCost || !formPayerId || formParticipants.length === 0) {
+      toast({ title: 'Lỗi', description: 'Vui lòng điền đầy đủ thông tin', variant: 'destructive' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sessions/${editSession?.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: formDate,
+          location: formLocation.trim() || 'Sân Pickleball',
+          totalCost: parseInt(formCost),
+          payerId: formPayerId,
+          participantIds: formParticipants,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Lỗi cập nhật buổi đánh');
+      }
+
+      toast({ title: 'Thành công', description: 'Đã cập nhật thông tin buổi đánh' });
+      setEditOpen(false);
+      await fetchSessions();
+    } catch (e: unknown) {
+      toast({
+        title: 'Lỗi',
+        description: e instanceof Error ? e.message : 'Đã xảy ra lỗi',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
 
   const formatMoney = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -140,7 +277,7 @@ export default function HistoryPage() {
         {sessions.length === 0 ? (
           <Card className="shadow-sm">
             <div className="py-12 text-center">
-              <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+              <PickleballPaddle className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
               <p className="text-muted-foreground">Chưa có buổi đánh nào được ghi nhận.</p>
               <Link href="/">
                 <Button variant="link" className="mt-2">Quay lại Dashboard</Button>
@@ -226,6 +363,21 @@ export default function HistoryPage() {
                         </div>
                       </div>
                     </div>
+
+                    {authUser.role === 'ADMIN' && (
+                      <div className="flex justify-end gap-2 pt-3 border-t mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditClick(session)}
+                          className="gap-1 text-xs"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Sửa
+                        </Button>
+                        {/* Xóa button has been removed per Admin request to simplify page flow */}
+                      </div>
+                    )}
                   </div>
                 </div>
               </details>
@@ -233,6 +385,95 @@ export default function HistoryPage() {
           </div>
         )}
       </main>
+
+      {/* Edit Session Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa buổi đánh</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Ngày</Label>
+              <Input
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Địa điểm (Không bắt buộc)</Label>
+              <Input
+                placeholder="VD: Sân Pickleball Phú Nhuận (mặc định: Sân Pickleball)"
+                value={formLocation}
+                onChange={(e) => setFormLocation(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Tổng chi phí (₫)</Label>
+              <Input
+                type="number"
+                placeholder="VD: 300000"
+                value={formCost}
+                onChange={(e) => setFormCost(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Người trả</Label>
+              <Select value={formPayerId} onValueChange={setFormPayerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn người trả" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Thành viên tham gia</Label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {users.map((u) => (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={formParticipants.includes(u.id)}
+                      onCheckedChange={() => toggleParticipant(u.id)}
+                    />
+                    <span className="text-sm">{u.name}</span>
+                    {u.zaloNickname && (
+                      <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+                        <MessageCircle className="h-3 w-3" />{u.zaloNickname}
+                      </span>
+                    )}
+                    <Badge variant="outline" className="text-xs ml-auto">
+                      {u.role}
+                    </Badge>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <DialogClose asChild>
+              <Button variant="outline">Hủy</Button>
+            </DialogClose>
+            <Button
+              onClick={handleUpdateSession}
+              disabled={saving}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Lưu thay đổi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Footer */}
       <footer className="border-t bg-white/60 backdrop-blur-sm mt-auto">

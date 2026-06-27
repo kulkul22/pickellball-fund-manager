@@ -12,9 +12,9 @@ async function main() {
   // Tạo 3 user với username + zalo nickname
   await prisma.user.createMany({
     data: [
-      { username: "admin", name: "Admin Tuấn", zaloNickname: "TuanPickleball", role: "ADMIN", balance: 0 },
-      { username: "an", name: "User An", zaloNickname: "An deptrai", role: "USER", balance: 0 },
-      { username: "binh", name: "User Bình", zaloNickname: "Binh volley", role: "USER", balance: 0 },
+      { username: "admin", name: "Admin Tuấn", zaloNickname: "TuanPickleball", role: "ADMIN", password: "admin@123", balance: 0 },
+      { username: "an", name: "User An", zaloNickname: "An deptrai", role: "USER", password: "12345", balance: 0 },
+      { username: "binh", name: "User Bình", zaloNickname: "Binh volley", role: "USER", password: "12345", balance: 0 },
     ],
   });
 
